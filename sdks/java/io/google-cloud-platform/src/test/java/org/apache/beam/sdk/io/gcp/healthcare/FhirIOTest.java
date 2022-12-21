@@ -32,6 +32,8 @@ import org.apache.beam.sdk.transforms.Count;
 import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.MapElements;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.PCollectionTuple;
+import org.apache.beam.sdk.values.Row;
 import org.apache.beam.sdk.values.TypeDescriptors;
 import org.junit.Assert;
 import org.junit.Rule;
@@ -124,6 +126,32 @@ public class FhirIOTest {
         .satisfies(
             (HealthcareIOError<String> err) -> {
               Assert.assertEquals("bad", err.getDataResource());
+              return null;
+            });
+    PCollection<Long> numFailedInserts = failedInserts.apply(Count.globally());
+
+    PAssert.thatSingleton(numFailedInserts).isEqualTo(1L);
+
+    pipeline.run();
+  }
+
+  @Test
+  public void test_FhirIOExternal_failedWrites() {
+    String badBundle = "bad";
+    List<String> emptyMessages = Collections.singletonList(badBundle);
+
+    PCollection<String> fhirBundles = pipeline.apply(Create.of(emptyMessages));
+
+    PCollectionTuple writeResult =
+        fhirBundles.apply(
+            new FhirIOExternal.ExecuteBundles.ExecuteBundlesWrapper("projects/foo/locations/us-central1/datasets/bar/hl7V2Stores/baz"));
+
+    PCollection<Row> failedInserts = writeResult.get("failedBundles");
+
+    PAssert.thatSingleton(failedInserts)
+        .satisfies(
+            (Row err) -> {
+              Assert.assertEquals("bad", err.getString("dataResource"));
               return null;
             });
     PCollection<Long> numFailedInserts = failedInserts.apply(Count.globally());

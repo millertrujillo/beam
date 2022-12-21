@@ -38,6 +38,7 @@ import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.testing.PAssert;
 import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.transforms.Create;
+import org.apache.beam.sdk.values.PCollectionTuple;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -123,6 +124,18 @@ public class FhirIOWriteIT {
   }
 
   @Test
+  public void testFhirIOExternal_ExecuteBundle() {
+    PCollectionTuple writeResult =
+        pipeline
+            .apply(Create.of(BUNDLES.get(version)))
+            .apply(new FhirIOExternal.ExecuteBundles.ExecuteBundlesWrapper(options.getFhirStore()));
+
+    PAssert.that(writeResult.get("failedBundles")).empty();
+
+    pipeline.run().waitUntilFinish();
+  }
+
+  @Test
   public void testFhirIO_ExecuteBundle_parseResponse() {
     List<FhirBundleParameter> bundles =
         BUNDLES.get("BUNDLE_PARSE_TEST").stream()
@@ -190,6 +203,27 @@ public class FhirIOWriteIT {
 
     PAssert.that(result.getFailedBodies()).empty();
     PAssert.that(result.getFailedFiles()).empty();
+
+    pipeline.run().waitUntilFinish();
+  }
+
+  @Test
+  public void testFhirIOExternal_Import() {
+    Pipeline pipeline = Pipeline.create(options);
+    if (options.getTempLocation() == null) {
+      options.setTempLocation("gs://temp-storage-for-healthcare-io-tests");
+    }
+    PCollectionTuple result =
+        pipeline
+            .apply(Create.of(BUNDLES.get(version)))
+            .apply(
+                new FhirIOExternal.Import.ImportWrapper(options.getFhirStore(),
+                    null,
+                    options.getGcsDeadLetterPath(),
+                    ContentStructure.BUNDLE));
+
+    PAssert.that(result.get("failedBodies")).empty();
+    PAssert.that(result.get("failedFiles")).empty();
 
     pipeline.run().waitUntilFinish();
   }
